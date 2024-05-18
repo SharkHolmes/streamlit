@@ -2,6 +2,7 @@ import cv2
 import matplotlib.pyplot as plt
 from matplotlib import animation
 from PIL import Image
+import numpy as np
 import os
 import streamlit as st
 from create_video import video_create  # create_video.py 파일에서 video_create 함수를 가져옴
@@ -16,38 +17,66 @@ def file_upload():
             f.write(uploaded_file.getbuffer())
         
         # Process the video and extract frames every 5 seconds
-        frames_dir = extract_frames("temp_video.mp4", interval=5)
+        frames_dir = process_video("temp_video.mp4")
         st.session_state.frames_directory = frames_dir
         return frames_dir
     return None
 
-def extract_frames(video_path, interval):
-    # Load the video using OpenCV
-    video = cv2.VideoCapture(video_path)
-    
-    # Get the frames per second (fps) of the video
-    fps = int(video.get(cv2.CAP_PROP_FPS))
-    
-    # Create a directory to save frames if it doesn't exist
+def process_video(video_path):
+    # 출력 폴더가 존재하지 않으면 생성
     frames_dir = f"img_dir_{os.path.splitext(os.path.basename(video_path))[0]}"
     if not os.path.exists(frames_dir):
         os.makedirs(frames_dir)
-    
-    # Calculate the interval in terms of frames
-    frame_interval = interval * fps
-    frame_count = 0
-    success, frame = video.read()
-    while success:
-        frame_number = int(video.get(cv2.CAP_PROP_POS_FRAMES))
-        if frame_number % frame_interval == 0:
-            img_path = f"{frames_dir}/frame_{frame_number}.png"
-            cv2.imwrite(img_path, frame)
-            frame_count += 1
-            st.write(f"Saved frame at {frame_number // fps} seconds as {img_path}")
-        success, frame = video.read()
-    
-    st.success(f"Extracted {frame_count} frames saved to '{frames_dir}/' directory.")
-    video.release()
+
+    # 동영상 캡처 객체 생성
+    cap = cv2.VideoCapture(video_path)
+
+    # 첫 번째 프레임 읽기
+    ret, previous_frame = cap.read()
+    previous_gray = cv2.cvtColor(previous_frame, cv2.COLOR_BGR2GRAY)
+    frame_number = 0
+    last_saved_frame = None
+    saved = False
+
+    # 이전 프레임이 존재할 때까지 반복
+    while ret:
+        # 현재 프레임 읽기
+        ret, current_frame = cap.read()
+        
+        if not ret:
+            break
+
+        # 현재 프레임을 그레이스케일로 변환
+        current_gray = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)
+        
+        if last_saved_frame is None:
+            # 첫 번째 비교에서는 프레임을 저장하고 초기화
+            frame_filename = os.path.join(frames_dir, f'frame_{frame_number}.jpg')
+            cv2.imwrite(frame_filename, current_frame)
+            print(f'Saved initial frame: {frame_filename}')
+            last_saved_frame = current_gray.copy()
+            saved = True
+        else:
+            # 현재 프레임과 마지막 저장된 프레임의 차이 계산
+            difference = cv2.absdiff(last_saved_frame, current_gray)
+            _, difference = cv2.threshold(difference, 30, 255, cv2.THRESH_BINARY)
+            
+            if np.sum(difference) == 0 and not saved:
+                # 동일한 프레임이 발견되었고 이전에 저장하지 않은 경우
+                frame_filename = os.path.join(frames_dir, f'frame_{frame_number}.jpg')
+                cv2.imwrite(frame_filename, current_frame)
+                print(f'Saved identical frame: {frame_filename}')
+                saved = True
+            elif np.sum(difference) != 0:
+                # 다른 프레임이 나타났을 때
+                saved = False
+                last_saved_frame = current_gray.copy()
+        
+        # 프레임 번호 증가
+        frame_number += 1
+
+    # 동영상 캡처 객체 해제
+    cap.release()
     return frames_dir
 
 def update_annotation(image, filename, x_min, y_min, x_max, y_max, label):
@@ -76,7 +105,7 @@ def display_images(image_paths, start_idx=0, images_per_row=20):
             st.image(img, use_column_width=True)
 
 def load_image_paths(frames_directory):
-    image_paths = sorted([os.path.join(frames_directory, f) for f in os.listdir(frames_directory) if f.endswith('.png')])
+    image_paths = sorted([os.path.join(frames_directory, f) for f in os.listdir(frames_directory) if f.endswith('.jpg')])
     return image_paths
 if __name__ == "__main__":
     # 사이드바에서 페이지 선택
@@ -90,8 +119,8 @@ if __name__ == "__main__":
 
     if frames_directory:
         if "images_with_boxes" not in st.session_state:
-            video, images_with_boxes = video_create(frames_directory)
-            st.session_state.images_with_boxes = images_with_boxes
+            #video, images_with_boxes = video_create(frames_directory)
+            #st.session_state.images_with_boxes = images_with_boxes
             st.session_state.current_index = 0
 
         if page == "Annotation":
@@ -106,7 +135,51 @@ if __name__ == "__main__":
         
             display_images(image_paths, start_idx=row_slider * images_per_row, images_per_row=images_per_row)
             st.header("Annotation Labeling")
-            custom_labels = ["", "dog", "cat"]
+            custom_labels = [
+    '', 'Hammer',
+    'SSD',
+    'Alcohol',
+    'Spanner',
+    'Axe',
+    'Awl',
+    'Throwing Knife',
+    'Firecracker',
+    'Thinner',
+    'Plier',
+    'Match',
+    'Smart Phone',
+    'Scissors',
+    'Tablet PC',
+    'Solid Fuel',
+    'Bat',
+    'Portable Gas',
+    'Nail Clippers',
+    'Knife',
+    'Metal Pipe',
+    'Electronic Cigarettes(Liquid)',
+    'Supplementary Battery',
+    'Bullet',
+    'Gun Parts',
+    'USB',
+    'Liquid',
+    'Aerosol',
+    'Screwdriver',
+    'Chisel',
+    'Handcuffs',
+    'Lighter',
+    'HDD',
+    'Electronic Cigarettes',
+    'Battery',
+    'Gun',
+    'Laptop',
+    'Saw',
+    'Zippo Oil',
+    'Stun Gun',
+    'Camera',
+    'Camcorder',
+    'SD Card'
+]
+
             img_path = run(frames_directory, custom_labels)
 
         elif page == "위해물품 감지":
